@@ -2,10 +2,12 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import equal from "fast-deep-equal";
 import { motion } from "framer-motion";
-import { memo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
+import { useCitations } from "@/hooks/use-citations";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
@@ -24,6 +26,24 @@ import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+//
+
+const SemanticResultsSync = ({ results }: { results: any[] }) => {
+  const { setItems } = useCitations();
+  useEffect(() => {
+    if (Array.isArray(results)) {
+      setItems(
+        results.map((r: any) => ({
+          fileId: r.fileId,
+          fileName: r.fileName,
+          driveUrl: typeof r.driveUrl === "string" ? r.driveUrl : "",
+          snippet: typeof r.snippet === "string" ? r.snippet : undefined,
+        }))
+      );
+    }
+  }, [results, setItems]);
+  return null;
+};
 
 const PurePreviewMessage = ({
   chatId,
@@ -51,6 +71,50 @@ const PurePreviewMessage = ({
   );
 
   useDataStream();
+  const citations = useCitations();
+  // Turn [n] into https links to their sources inside inline text.
+  const citationPlugin = useMemo(() => {
+    const items = citations.items || [];
+    const rx = /\[(\d+)\]/g;
+
+    const transformNode = (node: any, parent: any) => {
+      if (!node) return;
+      if (node.type === "text" && typeof node.value === "string" && parent && Array.isArray(parent.children)) {
+        // Do not alter code or existing links
+        if (parent.type === "link" || parent.type === "inlineCode" || parent.type === "code") return;
+
+        const raw = node.value;
+        if (!raw.includes("[")) return;
+        rx.lastIndex = 0;
+        const parts: any[] = [];
+        let last = 0;
+        let m: RegExpExecArray | null;
+        while ((m = rx.exec(raw)) !== null) {
+          const idx = m.index;
+          if (idx > last) parts.push({ type: "text", value: raw.slice(last, idx) });
+          const n = Number(m[1]);
+          const url = items[n - 1]?.driveUrl;
+          if (url) {
+            parts.push({ type: "link", url, children: [{ type: "text", value: m[0] }] });
+          } else {
+            parts.push({ type: "text", value: m[0] });
+          }
+          last = idx + m[0].length;
+        }
+        if (parts.length) {
+          if (last < raw.length) parts.push({ type: "text", value: raw.slice(last) });
+          const startIndex = parent.children.indexOf(node);
+          if (startIndex >= 0) parent.children.splice(startIndex, 1, ...parts);
+        }
+        return;
+      }
+      if (node.children && Array.isArray(node.children)) {
+        for (const child of node.children) transformNode(child, node);
+      }
+    };
+
+    return () => (tree: any) => transformNode(tree, null);
+  }, [citations.items]);
 
   return (
     <motion.div
@@ -138,7 +202,13 @@ const PurePreviewMessage = ({
                           : undefined
                       }
                     >
-                      <Response>{sanitizeText(part.text)}</Response>
+                      <Response
+                        remarkPlugins={
+                          message.role === "assistant" ? [citationPlugin] : undefined
+                        }
+                      >
+                        {sanitizeText(part.text)}
+                      </Response>
                     </MessageContent>
                   </div>
                 );
@@ -269,6 +339,7 @@ const PurePreviewMessage = ({
 
             if (type === "tool-semanticSearch") {
               const { toolCallId, state } = part;
+              const output = (state === "output-available" && !("error" in part.output)) ? part.output : null;
               return (
                 <Tool defaultOpen={true} key={toolCallId}>
                   <ToolHeader state={state} type="tool-semanticSearch" />
@@ -284,14 +355,27 @@ const PurePreviewMessage = ({
                             </div>
                           ) : (
                             <div className="space-y-2">
-                              {(part.output.results || []).map(
-                                (r: { fileId: string; fileName: string }, idx: number) => (
+                              <SemanticResultsSync results={output?.results || []} />
+                              {(output?.results || []).map(
+                                (r: any, idx: number) => (
                                   <div key={`${toolCallId}-${idx}`} className="rounded border p-2">
-                                    <div className="font-medium">{r.fileName}</div>
+                                    <div className="font-medium flex items-center justify-between gap-2">
+                                      <span>{r.fileName}</span>
+                                      {r.driveUrl && (
+                                        <a
+                                          className="text-primary text-xs underline"
+                                          href={r.driveUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                        >
+                                          Open in Drive
+                                        </a>
+                                      )}
+                                    </div>
                                   </div>
                                 )
                               )}
-                              {(!part.output.results || part.output.results.length === 0) && (
+                              {(!output?.results || output.results.length === 0) && (
                                 <div className="text-muted-foreground text-sm">No results.</div>
                               )}
                             </div>
@@ -415,7 +499,7 @@ export const ThinkingMessage = () => {
   );
 };
 
-const LoadingText = ({ children }: { children: React.ReactNode }) => {
+const LoadingText = ({ children }: { children: ReactNode }) => {
   return (
     <motion.div
       animate={{ backgroundPosition: ["100% 50%", "-100% 50%"] }}

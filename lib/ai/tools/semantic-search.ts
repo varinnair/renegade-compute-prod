@@ -5,7 +5,7 @@ import { embedBatchVoyage } from "@/lib/voyage";
 
 export const semanticSearch = tool({
   description:
-    "Search the user's indexed documents semantically and return matching files.",
+    "Search the user's indexed documents semantically and return matching files (no content snippets).",
   inputSchema: z.object({
     query: z.string().min(1),
     limit: z.number().int().min(1).max(50).optional().default(10),
@@ -27,8 +27,13 @@ export const semanticSearch = tool({
 
       const ids: string[][] = Array.isArray(res?.ids) ? res.ids : [];
       const metadatas: any[][] = Array.isArray(res?.metadatas) ? res.metadatas : [];
+      // No documents included; we only return file metadata.
 
-      const out: Array<{ fileId: string; fileName: string }> = [];
+      const out: Array<{
+        fileId: string;
+        fileName: string;
+        driveUrl: string;
+      }> = [];
       const seen = new Set<string>();
       const firstIds = ids[0] || [];
       const firstMetas = metadatas[0] || [];
@@ -38,8 +43,11 @@ export const semanticSearch = tool({
         const meta = firstMetas[i] || {};
         const fileId: string = meta.fileId || (typeof id === "string" ? String(id).split(":")[0] : "");
         const fileName: string = meta.fileName || meta.name || "Untitled";
+        const start: number | undefined = typeof meta.start === "number" ? meta.start : undefined;
+        const end: number | undefined = typeof meta.end === "number" ? meta.end : undefined;
+        const driveUrl = fileId ? `https://drive.google.com/file/d/${fileId}/view` : "";
         if (fileId && !seen.has(fileId)) {
-          out.push({ fileId, fileName });
+          out.push({ fileId, fileName, driveUrl });
           seen.add(fileId);
         }
       }
