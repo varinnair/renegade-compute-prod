@@ -2,34 +2,12 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import equal from "fast-deep-equal";
 import { motion } from "framer-motion";
-import {
-  Children,
-  cloneElement,
-  isValidElement,
-  memo,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import type { ReactElement, ReactNode } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
-import {
-  InlineCitation,
-  InlineCitationCard,
-  InlineCitationCardBody,
-  InlineCitationCardTrigger,
-  InlineCitationCarousel,
-  InlineCitationCarouselContent,
-  InlineCitationCarouselHeader,
-  InlineCitationCarouselIndex,
-  InlineCitationCarouselItem,
-  InlineCitationSource,
-  InlineCitationQuote,
-} from "./elements/inline-citation";
 import { useCitations } from "@/hooks/use-citations";
-import type { CitationItem } from "@/hooks/use-citations";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
@@ -48,163 +26,7 @@ import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
-import type { StreamdownProps } from "streamdown";
-
-const CITATION_PATTERN = /\[(\d+)\]/g;
-
-const citationComponents = (
-  items: CitationItem[]
-): NonNullable<StreamdownProps["components"]> => {
-  const renderCitation = (item: CitationItem, key: string) => {
-    const url = item.driveUrl ?? "";
-
-    return (
-      <InlineCitation key={key}>
-        <InlineCitationCard>
-          <InlineCitationCardTrigger sources={url ? [url] : []} />
-          <InlineCitationCardBody>
-            <InlineCitationCarousel>
-              <InlineCitationCarouselHeader>
-                <InlineCitationCarouselIndex />
-              </InlineCitationCarouselHeader>
-              <InlineCitationCarouselContent>
-                <InlineCitationCarouselItem>
-                  <InlineCitationSource
-                    title={item.fileName || "Unknown source"}
-                    url={url || undefined}
-                    description={undefined}
-                  />
-                  {item.snippet ? (
-                    <InlineCitationQuote>{item.snippet}</InlineCitationQuote>
-                  ) : null}
-                </InlineCitationCarouselItem>
-              </InlineCitationCarouselContent>
-            </InlineCitationCarousel>
-          </InlineCitationCardBody>
-        </InlineCitationCard>
-      </InlineCitation>
-    );
-  };
-
-  const shouldSkipElement = (node: ReactElement) => {
-    if (node.type === InlineCitation) return true;
-    if (typeof node.type === "string") {
-      return node.type === "code" || node.type === "pre";
-    }
-    return false;
-  };
-
-  const replaceTextWithCitations = (
-    value: string,
-    keyPrefix: string,
-    index: number
-  ): { nodes: ReactNode; changed: boolean } => {
-    CITATION_PATTERN.lastIndex = 0;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    const parts: ReactNode[] = [];
-    let didChange = false;
-
-    while ((match = CITATION_PATTERN.exec(value)) !== null) {
-      const matchIndex = match.index;
-      if (matchIndex > lastIndex) {
-        parts.push(value.slice(lastIndex, matchIndex));
-      }
-
-      const num = Number(match[1]);
-      const item = items[num - 1];
-
-      if (item) {
-        parts.push(renderCitation(item, `${keyPrefix}-cit-${index}-${parts.length}`));
-        didChange = true;
-      } else {
-        parts.push(match[0]);
-      }
-
-      lastIndex = matchIndex + match[0].length;
-    }
-
-    if (!didChange) {
-      return { nodes: value, changed: false };
-    }
-
-    if (lastIndex < value.length) {
-      parts.push(value.slice(lastIndex));
-    }
-
-    return { nodes: parts, changed: true };
-  };
-
-  const processChildren = (
-    children: ReactNode,
-    keyPrefix: string
-  ): { nodes: ReactNode; changed: boolean } => {
-    let changed = false;
-
-    const processed = Children.toArray(children).flatMap((child, idx) => {
-      if (typeof child === "string") {
-        const replaced = replaceTextWithCitations(child, keyPrefix, idx);
-        if (replaced.changed) {
-          changed = true;
-        }
-        return Array.isArray(replaced.nodes) ? replaced.nodes : [replaced.nodes];
-      }
-
-      if (isValidElement(child)) {
-        if (shouldSkipElement(child) || !child.props?.children) {
-          return [child];
-        }
-
-        const nested = processChildren(child.props.children, `${keyPrefix}-${idx}`);
-        if (nested.changed) {
-          changed = true;
-          return [
-            cloneElement(child, {
-              children: nested.nodes,
-            } as Record<string, unknown>),
-          ];
-        }
-
-        return [child];
-      }
-
-      return [child];
-    });
-
-    if (!changed) {
-      return { nodes: children, changed: false };
-    }
-
-    return { nodes: processed, changed: true };
-  };
-
-  const wrap = (Tag: keyof JSX.IntrinsicElements) =>
-    function InlineAwareComponent(props: any) {
-      const { children, node, ordered, index, checked, ...rest } = props;
-      const { nodes, changed } = processChildren(children, Tag);
-
-      if (!changed) {
-        return <Tag {...rest}>{children}</Tag>;
-      }
-
-      return <Tag {...rest}>{nodes}</Tag>;
-    };
-
-  return {
-    p: wrap("p"),
-    li: wrap("li"),
-    h1: wrap("h1"),
-    h2: wrap("h2"),
-    h3: wrap("h3"),
-    h4: wrap("h4"),
-    h5: wrap("h5"),
-    h6: wrap("h6"),
-    blockquote: wrap("blockquote"),
-    td: wrap("td"),
-    th: wrap("th"),
-    span: wrap("span"),
-  };
-};
+//
 
 const SemanticResultsSync = ({ results }: { results: any[] }) => {
   const { setItems } = useCitations();
@@ -250,10 +72,49 @@ const PurePreviewMessage = ({
 
   useDataStream();
   const citations = useCitations();
-  const inlineMarkdownComponents = useMemo(
-    () => citationComponents(citations.items),
-    [citations.items]
-  );
+  // Turn [n] into https links to their sources inside inline text.
+  const citationPlugin = useMemo(() => {
+    const items = citations.items || [];
+    const rx = /\[(\d+)\]/g;
+
+    const transformNode = (node: any, parent: any) => {
+      if (!node) return;
+      if (node.type === "text" && typeof node.value === "string" && parent && Array.isArray(parent.children)) {
+        // Do not alter code or existing links
+        if (parent.type === "link" || parent.type === "inlineCode" || parent.type === "code") return;
+
+        const raw = node.value;
+        if (!raw.includes("[")) return;
+        rx.lastIndex = 0;
+        const parts: any[] = [];
+        let last = 0;
+        let m: RegExpExecArray | null;
+        while ((m = rx.exec(raw)) !== null) {
+          const idx = m.index;
+          if (idx > last) parts.push({ type: "text", value: raw.slice(last, idx) });
+          const n = Number(m[1]);
+          const url = items[n - 1]?.driveUrl;
+          if (url) {
+            parts.push({ type: "link", url, children: [{ type: "text", value: m[0] }] });
+          } else {
+            parts.push({ type: "text", value: m[0] });
+          }
+          last = idx + m[0].length;
+        }
+        if (parts.length) {
+          if (last < raw.length) parts.push({ type: "text", value: raw.slice(last) });
+          const startIndex = parent.children.indexOf(node);
+          if (startIndex >= 0) parent.children.splice(startIndex, 1, ...parts);
+        }
+        return;
+      }
+      if (node.children && Array.isArray(node.children)) {
+        for (const child of node.children) transformNode(child, node);
+      }
+    };
+
+    return () => (tree: any) => transformNode(tree, null);
+  }, [citations.items]);
 
   return (
     <motion.div
@@ -342,10 +203,8 @@ const PurePreviewMessage = ({
                       }
                     >
                       <Response
-                        components={
-                          message.role === "assistant"
-                            ? inlineMarkdownComponents
-                            : undefined
+                        remarkPlugins={
+                          message.role === "assistant" ? [citationPlugin] : undefined
                         }
                       >
                         {sanitizeText(part.text)}
