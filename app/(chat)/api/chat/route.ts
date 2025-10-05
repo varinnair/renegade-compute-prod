@@ -26,6 +26,8 @@ import { createDocument } from "@/lib/ai/tools/create-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
+import { semanticSearch } from "@/lib/ai/tools/semantic-search";
+import { viewFile } from "@/lib/ai/tools/view-file";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -183,6 +185,8 @@ export const POST = withAuthApi(async ({ request, session }) => {
                   "createDocument",
                   "updateDocument",
                   "requestSuggestions",
+                  "semanticSearch",
+                  "viewFile",
                 ],
           experimental_transform: smoothStream({ chunking: "word" }),
           tools: {
@@ -193,6 +197,8 @@ export const POST = withAuthApi(async ({ request, session }) => {
               session,
               dataStream,
             }),
+            semanticSearch,
+            viewFile: viewFile({ session }),
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
