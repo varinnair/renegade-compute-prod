@@ -22,6 +22,7 @@ import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import { SelectItem } from "@/components/ui/select";
 import { chatModels } from "@/lib/ai/models";
 import { myProvider } from "@/lib/ai/providers";
+import { PROMPT_PRESETS, type PresetId } from "@/lib/ai/prompt-presets";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import type { AppUsage } from "@/lib/usage";
 import { cn } from "@/lib/utils";
@@ -105,6 +106,13 @@ function PureMultimodalInput({
     "input",
     ""
   );
+  const [selectedPresetId, setSelectedPresetId] = useState<PresetId | null>(
+    null
+  );
+  const [pendingPresetId, setPendingPresetId] = useState<PresetId | null>(
+    null
+  );
+  const [showPresetConfirm, setShowPresetConfirm] = useState(false);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -324,6 +332,21 @@ function PureMultimodalInput({
               onModelChange={onModelChange}
               selectedModelId={selectedModelId}
             />
+            <PresetSelector
+              disabled={status !== "ready"}
+              onSelect={(id) => {
+                const preset = PROMPT_PRESETS.find((p) => p.id === id);
+                if (!preset) return;
+                if (!input.trim()) {
+                  setInput(preset.text);
+                  setSelectedPresetId(preset.id);
+                } else {
+                  setPendingPresetId(preset.id);
+                  setShowPresetConfirm(true);
+                }
+              }}
+              selectedPresetId={selectedPresetId}
+            />
           </PromptInputTools>
 
           {status === "submitted" ? (
@@ -339,6 +362,59 @@ function PureMultimodalInput({
           )}
         </PromptInputToolbar>
       </PromptInput>
+      {showPresetConfirm && pendingPresetId && (
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-md border bg-muted/40 p-2 text-sm">
+          <div className="text-muted-foreground">Apply preset to input?</div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                const preset = PROMPT_PRESETS.find(
+                  (p) => p.id === pendingPresetId
+                );
+                if (!preset) return;
+                setInput(preset.text);
+                setSelectedPresetId(preset.id);
+                setPendingPresetId(null);
+                setShowPresetConfirm(false);
+                textareaRef.current?.focus();
+              }}
+            >
+              Replace
+            </Button>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => {
+                const preset = PROMPT_PRESETS.find(
+                  (p) => p.id === pendingPresetId
+                );
+                if (!preset) return;
+                const sep = input.endsWith("\n") ? "\n" : "\n\n";
+                setInput((prev) => `${prev}${sep}${preset.text}`);
+                setSelectedPresetId(preset.id);
+                setPendingPresetId(null);
+                setShowPresetConfirm(false);
+                textareaRef.current?.focus();
+              }}
+            >
+              Append
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setPendingPresetId(null);
+                setShowPresetConfirm(false);
+                textareaRef.current?.focus();
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -453,6 +529,52 @@ function PureModelSelectorCompact({
 }
 
 const ModelSelectorCompact = memo(PureModelSelectorCompact);
+
+function PurePresetSelector({
+  selectedPresetId,
+  onSelect,
+  disabled,
+}: {
+  selectedPresetId: PresetId | null;
+  onSelect: (id: PresetId) => void;
+  disabled?: boolean;
+}) {
+  const selected = PROMPT_PRESETS.find((p) => p.id === selectedPresetId);
+  return (
+    <PromptInputModelSelect
+      onValueChange={(label) => {
+        const found = PROMPT_PRESETS.find((p) => p.label === label);
+        if (found) onSelect(found.id);
+      }}
+      value={selected?.label ?? "Preset Prompts"}
+      disabled={disabled}
+    >
+      <Trigger
+        className="flex h-8 items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none transition-colors hover:bg-accent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+        type="button"
+      >
+        <span className="hidden font-medium text-xs sm:block">
+          {selected?.label ?? "Preset Prompts"}
+        </span>
+        <ChevronDownIcon size={16} />
+      </Trigger>
+      <PromptInputModelSelectContent className="min-w-[260px] p-0">
+        <div className="flex flex-col gap-px">
+          {PROMPT_PRESETS.map((preset) => (
+            <SelectItem key={preset.id} value={preset.label}>
+              <div className="truncate font-medium text-xs">{preset.label}</div>
+              <div className="mt-px truncate text-[10px] text-muted-foreground leading-tight">
+                {preset.text.slice(0, 80)}
+              </div>
+            </SelectItem>
+          ))}
+        </div>
+      </PromptInputModelSelectContent>
+    </PromptInputModelSelect>
+  );
+}
+
+const PresetSelector = memo(PurePresetSelector);
 
 function PureStopButton({
   stop,
