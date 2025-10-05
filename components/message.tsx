@@ -2,7 +2,16 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import equal from "fast-deep-equal";
 import { motion } from "framer-motion";
-import { memo, useEffect, useState } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  memo,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
@@ -20,6 +29,7 @@ import {
   InlineCitationQuote,
 } from "./elements/inline-citation";
 import { useCitations } from "@/hooks/use-citations";
+import type { CitationItem } from "@/hooks/use-citations";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
@@ -38,6 +48,163 @@ import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+import type { StreamdownProps } from "streamdown";
+
+const CITATION_PATTERN = /\[(\d+)\]/g;
+
+const citationComponents = (
+  items: CitationItem[]
+): NonNullable<StreamdownProps["components"]> => {
+  const renderCitation = (item: CitationItem, key: string) => {
+    const url = item.driveUrl ?? "";
+
+    return (
+      <InlineCitation key={key}>
+        <InlineCitationCard>
+          <InlineCitationCardTrigger sources={url ? [url] : []} />
+          <InlineCitationCardBody>
+            <InlineCitationCarousel>
+              <InlineCitationCarouselHeader>
+                <InlineCitationCarouselIndex />
+              </InlineCitationCarouselHeader>
+              <InlineCitationCarouselContent>
+                <InlineCitationCarouselItem>
+                  <InlineCitationSource
+                    title={item.fileName || "Unknown source"}
+                    url={url || undefined}
+                    description={undefined}
+                  />
+                  {item.snippet ? (
+                    <InlineCitationQuote>{item.snippet}</InlineCitationQuote>
+                  ) : null}
+                </InlineCitationCarouselItem>
+              </InlineCitationCarouselContent>
+            </InlineCitationCarousel>
+          </InlineCitationCardBody>
+        </InlineCitationCard>
+      </InlineCitation>
+    );
+  };
+
+  const shouldSkipElement = (node: ReactElement) => {
+    if (node.type === InlineCitation) return true;
+    if (typeof node.type === "string") {
+      return node.type === "code" || node.type === "pre";
+    }
+    return false;
+  };
+
+  const replaceTextWithCitations = (
+    value: string,
+    keyPrefix: string,
+    index: number
+  ): { nodes: ReactNode; changed: boolean } => {
+    CITATION_PATTERN.lastIndex = 0;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    const parts: ReactNode[] = [];
+    let didChange = false;
+
+    while ((match = CITATION_PATTERN.exec(value)) !== null) {
+      const matchIndex = match.index;
+      if (matchIndex > lastIndex) {
+        parts.push(value.slice(lastIndex, matchIndex));
+      }
+
+      const num = Number(match[1]);
+      const item = items[num - 1];
+
+      if (item) {
+        parts.push(renderCitation(item, `${keyPrefix}-cit-${index}-${parts.length}`));
+        didChange = true;
+      } else {
+        parts.push(match[0]);
+      }
+
+      lastIndex = matchIndex + match[0].length;
+    }
+
+    if (!didChange) {
+      return { nodes: value, changed: false };
+    }
+
+    if (lastIndex < value.length) {
+      parts.push(value.slice(lastIndex));
+    }
+
+    return { nodes: parts, changed: true };
+  };
+
+  const processChildren = (
+    children: ReactNode,
+    keyPrefix: string
+  ): { nodes: ReactNode; changed: boolean } => {
+    let changed = false;
+
+    const processed = Children.toArray(children).flatMap((child, idx) => {
+      if (typeof child === "string") {
+        const replaced = replaceTextWithCitations(child, keyPrefix, idx);
+        if (replaced.changed) {
+          changed = true;
+        }
+        return Array.isArray(replaced.nodes) ? replaced.nodes : [replaced.nodes];
+      }
+
+      if (isValidElement(child)) {
+        if (shouldSkipElement(child) || !child.props?.children) {
+          return [child];
+        }
+
+        const nested = processChildren(child.props.children, `${keyPrefix}-${idx}`);
+        if (nested.changed) {
+          changed = true;
+          return [
+            cloneElement(child, {
+              children: nested.nodes,
+            } as Record<string, unknown>),
+          ];
+        }
+
+        return [child];
+      }
+
+      return [child];
+    });
+
+    if (!changed) {
+      return { nodes: children, changed: false };
+    }
+
+    return { nodes: processed, changed: true };
+  };
+
+  const wrap = (Tag: keyof JSX.IntrinsicElements) =>
+    function InlineAwareComponent(props: any) {
+      const { children, node, ordered, index, checked, ...rest } = props;
+      const { nodes, changed } = processChildren(children, Tag);
+
+      if (!changed) {
+        return <Tag {...rest}>{children}</Tag>;
+      }
+
+      return <Tag {...rest}>{nodes}</Tag>;
+    };
+
+  return {
+    p: wrap("p"),
+    li: wrap("li"),
+    h1: wrap("h1"),
+    h2: wrap("h2"),
+    h3: wrap("h3"),
+    h4: wrap("h4"),
+    h5: wrap("h5"),
+    h6: wrap("h6"),
+    blockquote: wrap("blockquote"),
+    td: wrap("td"),
+    th: wrap("th"),
+    span: wrap("span"),
+  };
+};
 
 const SemanticResultsSync = ({ results }: { results: any[] }) => {
   const { setItems } = useCitations();
@@ -47,82 +214,13 @@ const SemanticResultsSync = ({ results }: { results: any[] }) => {
         results.map((r: any) => ({
           fileId: r.fileId,
           fileName: r.fileName,
-          driveUrl: r.driveUrl,
+          driveUrl: typeof r.driveUrl === "string" ? r.driveUrl : "",
+          snippet: typeof r.snippet === "string" ? r.snippet : undefined,
         }))
       );
     }
   }, [results, setItems]);
   return null;
-};
-
-const AssistantTextWithCitations = ({ text }: { text: string }) => {
-  // Keep using citation store to resolve metadata for badges,
-  // but do not open any side panel or render numbers.
-  const citations = useCitations();
-  // Split on citation markers like [1], [2], ... without capturing the inner digits
-  // to avoid rendering stray numbers as separate segments.
-  const parts = text.split(/(\[\d+\])/g);
-  return (
-    <span className="inline">
-      {parts.map((part, index) => {
-        const match = part.match(/^\[(\d+)\]$/);
-        if (match) {
-          const num = Number(match[1]);
-          const item = citations.items[num - 1];
-          const url = item?.driveUrl ?? "";
-          if (!item) {
-            // If there is no corresponding metadata, omit the marker entirely.
-            return null;
-          }
-          return (
-            <InlineCitation key={`cit-${index}`}>
-              <InlineCitationCard>
-                <InlineCitationCardTrigger
-                  sources={url ? [url] : []}
-                />
-                <InlineCitationCardBody>
-                  <InlineCitationCarousel>
-                    <InlineCitationCarouselHeader>
-                      <InlineCitationCarouselIndex />
-                    </InlineCitationCarouselHeader>
-                    <InlineCitationCarouselContent>
-                      <InlineCitationCarouselItem>
-                        <InlineCitationSource
-                          title={item?.fileName || "Unknown source"}
-                          url={url || undefined}
-                          description={undefined}
-                        />
-                      </InlineCitationCarouselItem>
-                    </InlineCitationCarouselContent>
-                  </InlineCitationCarousel>
-                </InlineCitationCardBody>
-              </InlineCitationCard>
-            </InlineCitation>
-          );
-        }
-        // Non-marker segment: preserve paragraph breaks while keeping
-        // intra-paragraph content inline so citations don't force new blocks.
-        const paraChunks = part.split(/\n{2,}/g);
-        return (
-          <span key={`md-${index}`} className="contents">
-            {paraChunks.map((chunk, i) => (
-              <span key={`md-${index}-chunk-${i}`} className="contents">
-                <Response className="contents [&>p]:inline [&>p]:m-0">
-                  {chunk}
-                </Response>
-                {i < paraChunks.length - 1 && (
-                  <>
-                    <br />
-                    <br />
-                  </>
-                )}
-              </span>
-            ))}
-          </span>
-        );
-      })}
-    </span>
-  );
 };
 
 const PurePreviewMessage = ({
@@ -152,6 +250,10 @@ const PurePreviewMessage = ({
 
   useDataStream();
   const citations = useCitations();
+  const inlineMarkdownComponents = useMemo(
+    () => citationComponents(citations.items),
+    [citations.items]
+  );
 
   return (
     <motion.div
@@ -239,13 +341,15 @@ const PurePreviewMessage = ({
                           : undefined
                       }
                     >
-                      {message.role === "assistant" ? (
-                        <AssistantTextWithCitations
-                          text={sanitizeText(part.text)}
-                        />
-                      ) : (
-                        <Response>{sanitizeText(part.text)}</Response>
-                      )}
+                      <Response
+                        components={
+                          message.role === "assistant"
+                            ? inlineMarkdownComponents
+                            : undefined
+                        }
+                      >
+                        {sanitizeText(part.text)}
+                      </Response>
                     </MessageContent>
                   </div>
                 );
@@ -536,7 +640,7 @@ export const ThinkingMessage = () => {
   );
 };
 
-const LoadingText = ({ children }: { children: React.ReactNode }) => {
+const LoadingText = ({ children }: { children: ReactNode }) => {
   return (
     <motion.div
       animate={{ backgroundPosition: ["100% 50%", "-100% 50%"] }}
