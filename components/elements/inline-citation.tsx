@@ -30,7 +30,7 @@ export const InlineCitation = ({
   ...props
 }: InlineCitationProps) => (
   <span
-    className={cn("group inline items-center gap-1", className)}
+    className={cn("group inline-flex items-baseline align-middle", className)}
     {...props}
   />
 );
@@ -64,7 +64,7 @@ export const InlineCitationCardTrigger = ({
 }: InlineCitationCardTriggerProps) => (
   <HoverCardTrigger asChild>
     <Badge
-      className={cn("ml-1 rounded-full", className)}
+      className={cn("ml-1 rounded-full align-middle", className)}
       variant="secondary"
       {...props}
     >

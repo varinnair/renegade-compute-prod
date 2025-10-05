@@ -2,10 +2,24 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import equal from "fast-deep-equal";
 import { motion } from "framer-motion";
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
+import {
+  InlineCitation,
+  InlineCitationCard,
+  InlineCitationCardBody,
+  InlineCitationCardTrigger,
+  InlineCitationCarousel,
+  InlineCitationCarouselContent,
+  InlineCitationCarouselHeader,
+  InlineCitationCarouselIndex,
+  InlineCitationCarouselItem,
+  InlineCitationSource,
+  InlineCitationQuote,
+} from "./elements/inline-citation";
+import { useCitations } from "@/hooks/use-citations";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
@@ -24,6 +38,92 @@ import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+
+const SemanticResultsSync = ({ results }: { results: any[] }) => {
+  const { setItems } = useCitations();
+  useEffect(() => {
+    if (Array.isArray(results)) {
+      setItems(
+        results.map((r: any) => ({
+          fileId: r.fileId,
+          fileName: r.fileName,
+          driveUrl: r.driveUrl,
+        }))
+      );
+    }
+  }, [results, setItems]);
+  return null;
+};
+
+const AssistantTextWithCitations = ({ text }: { text: string }) => {
+  // Keep using citation store to resolve metadata for badges,
+  // but do not open any side panel or render numbers.
+  const citations = useCitations();
+  // Split on citation markers like [1], [2], ... without capturing the inner digits
+  // to avoid rendering stray numbers as separate segments.
+  const parts = text.split(/(\[\d+\])/g);
+  return (
+    <span className="inline">
+      {parts.map((part, index) => {
+        const match = part.match(/^\[(\d+)\]$/);
+        if (match) {
+          const num = Number(match[1]);
+          const item = citations.items[num - 1];
+          const url = item?.driveUrl ?? "";
+          if (!item) {
+            // If there is no corresponding metadata, omit the marker entirely.
+            return null;
+          }
+          return (
+            <InlineCitation key={`cit-${index}`}>
+              <InlineCitationCard>
+                <InlineCitationCardTrigger
+                  sources={url ? [url] : []}
+                />
+                <InlineCitationCardBody>
+                  <InlineCitationCarousel>
+                    <InlineCitationCarouselHeader>
+                      <InlineCitationCarouselIndex />
+                    </InlineCitationCarouselHeader>
+                    <InlineCitationCarouselContent>
+                      <InlineCitationCarouselItem>
+                        <InlineCitationSource
+                          title={item?.fileName || "Unknown source"}
+                          url={url || undefined}
+                          description={undefined}
+                        />
+                      </InlineCitationCarouselItem>
+                    </InlineCitationCarouselContent>
+                  </InlineCitationCarousel>
+                </InlineCitationCardBody>
+              </InlineCitationCard>
+            </InlineCitation>
+          );
+        }
+        // Non-marker segment: preserve paragraph breaks while keeping
+        // intra-paragraph content inline so citations don't force new blocks.
+        const paraChunks = part.split(/\n{2,}/g);
+        return (
+          <span key={`md-${index}`} className="contents">
+            {paraChunks.map((chunk, i) => (
+              <span key={`md-${index}-chunk-${i}`} className="contents">
+                <Response className="contents [&>p]:inline [&>p]:m-0">
+                  {chunk}
+                </Response>
+                {i < paraChunks.length - 1 && (
+                  <>
+                    <br />
+                    <br />
+                  </>
+                )}
+              </span>
+            ))}
+          </span>
+        );
+      })}
+    </span>
+  );
+};
 
 const PurePreviewMessage = ({
   chatId,
@@ -51,6 +151,7 @@ const PurePreviewMessage = ({
   );
 
   useDataStream();
+  const citations = useCitations();
 
   return (
     <motion.div
@@ -138,7 +239,13 @@ const PurePreviewMessage = ({
                           : undefined
                       }
                     >
-                      <Response>{sanitizeText(part.text)}</Response>
+                      {message.role === "assistant" ? (
+                        <AssistantTextWithCitations
+                          text={sanitizeText(part.text)}
+                        />
+                      ) : (
+                        <Response>{sanitizeText(part.text)}</Response>
+                      )}
                     </MessageContent>
                   </div>
                 );
@@ -269,6 +376,7 @@ const PurePreviewMessage = ({
 
             if (type === "tool-semanticSearch") {
               const { toolCallId, state } = part;
+              const output = (state === "output-available" && !("error" in part.output)) ? part.output : null;
               return (
                 <Tool defaultOpen={true} key={toolCallId}>
                   <ToolHeader state={state} type="tool-semanticSearch" />
@@ -284,14 +392,27 @@ const PurePreviewMessage = ({
                             </div>
                           ) : (
                             <div className="space-y-2">
-                              {(part.output.results || []).map(
-                                (r: { fileId: string; fileName: string }, idx: number) => (
+                              <SemanticResultsSync results={output?.results || []} />
+                              {(output?.results || []).map(
+                                (r: any, idx: number) => (
                                   <div key={`${toolCallId}-${idx}`} className="rounded border p-2">
-                                    <div className="font-medium">{r.fileName}</div>
+                                    <div className="font-medium flex items-center justify-between gap-2">
+                                      <span>{r.fileName}</span>
+                                      {r.driveUrl && (
+                                        <a
+                                          className="text-primary text-xs underline"
+                                          href={r.driveUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                        >
+                                          Open in Drive
+                                        </a>
+                                      )}
+                                    </div>
                                   </div>
                                 )
                               )}
-                              {(!part.output.results || part.output.results.length === 0) && (
+                              {(!output?.results || output.results.length === 0) && (
                                 <div className="text-muted-foreground text-sm">No results.</div>
                               )}
                             </div>

@@ -63,7 +63,9 @@ export const systemPrompt = ({
     return `${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
+  const citationsGuidance = `\nWhen you reference retrieved files, add inline citations like [1], [2], ... adjacent to the relevant sentence. Use them sparingly and only when content is supported by retrieved sources.`;
+
+  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}${citationsGuidance}`;
 };
 
 export const codePrompt = `

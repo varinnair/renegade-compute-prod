@@ -215,6 +215,8 @@ export function Chat({
         votes={votes}
       />
 
+      {/* Citations panel removed per design */}
+
       <AlertDialog
         onOpenChange={setShowCreditCardAlert}
         open={showCreditCardAlert}
