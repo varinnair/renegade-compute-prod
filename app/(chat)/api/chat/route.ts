@@ -176,6 +176,10 @@ export const POST = withAuthApi(async ({ request, session }) => {
           model: myProvider.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
           messages: convertToModelMessages(uiMessages),
+          providerOptions:
+            selectedChatModel === "chat-model-reasoning"
+              ? { anthropic: { thinking: { type: "enabled", budgetTokens: 16000 } } }
+              : undefined,
           stopWhen: stepCountIs(5),
           experimental_activeTools:
             selectedChatModel === "chat-model-reasoning"

@@ -8,7 +8,7 @@ export const semanticSearch = tool({
     "Search the user's indexed documents semantically and return matching files.",
   inputSchema: z.object({
     query: z.string().min(1),
-    limit: z.number().int().min(1).max(50).optional().default(5),
+    limit: z.number().int().min(1).max(50).optional().default(10),
     collection: z.string().optional(),
   }),
   execute: async ({ query, limit, collection }) => {
@@ -29,6 +29,7 @@ export const semanticSearch = tool({
       const metadatas: any[][] = Array.isArray(res?.metadatas) ? res.metadatas : [];
 
       const out: Array<{ fileId: string; fileName: string }> = [];
+      const seen = new Set<string>();
       const firstIds = ids[0] || [];
       const firstMetas = metadatas[0] || [];
 
@@ -37,7 +38,10 @@ export const semanticSearch = tool({
         const meta = firstMetas[i] || {};
         const fileId: string = meta.fileId || (typeof id === "string" ? String(id).split(":")[0] : "");
         const fileName: string = meta.fileName || meta.name || "Untitled";
-        if (fileId) out.push({ fileId, fileName });
+        if (fileId && !seen.has(fileId)) {
+          out.push({ fileId, fileName });
+          seen.add(fileId);
+        }
       }
 
       return { results: out };
