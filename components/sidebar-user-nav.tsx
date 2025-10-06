@@ -70,6 +70,21 @@ export function SidebarUserNav({ user }: { user: User }) {
             data-testid="user-nav-menu"
             side="top"
           >
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="user-nav-item-chat"
+              onSelect={() => router.push("/")}
+            >
+              Chat
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="user-nav-item-meeting"
+              onSelect={() => router.push("/meeting")}
+            >
+              Meeting
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {!isGuest && (
               <DropdownMenuItem
                 className="cursor-pointer"
@@ -80,7 +95,7 @@ export function SidebarUserNav({ user }: { user: User }) {
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem
+            {/* <DropdownMenuItem
               className="cursor-pointer"
               data-testid="user-nav-item-theme"
               onSelect={() =>
@@ -89,7 +104,7 @@ export function SidebarUserNav({ user }: { user: User }) {
             >
               {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator /> */}
             <DropdownMenuItem asChild data-testid="user-nav-item-auth">
               <button
                 className="w-full cursor-pointer"

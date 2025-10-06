@@ -8,7 +8,7 @@ import {
 type SaveBody = {
   title?: string;
   transcriptText?: string;
-  folderId?: string; // can be path like "warburg-demo/meetings" or a Drive folder ID
+  folderId?: string; // can be path like "renegade-demo/meetings" or a Drive folder ID
 };
 
 export const POST = withAuthApi(async ({ request, session }) => {

@@ -144,7 +144,7 @@ export function MeetingTranscriberClient() {
       const res = await fetch("/api/meetings/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: trimmedTitle, transcriptText: fullText, folderId: "warburg-demo/meetings" }),
+        body: JSON.stringify({ title: trimmedTitle, transcriptText: fullText, folderId: "renegade-demo/meetings" }),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));

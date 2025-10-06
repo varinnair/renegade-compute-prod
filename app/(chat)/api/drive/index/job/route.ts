@@ -18,8 +18,8 @@ import {
 
 // Endpoint defaults
 const DEFAULTS = {
-  folderPath: "warburg-demo",
-  collection: "warburg-demo",
+  folderPath: "renegade-demo",
+  collection: "renegade-demo",
   strategy: "hash-skip" as const,
   maxDepth: 5,
   chunkSize: 1000,

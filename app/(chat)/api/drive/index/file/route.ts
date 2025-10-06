@@ -37,7 +37,7 @@ export const POST = withAuthApi(async ({ request, session }) => {
     const body = (await request.json().catch(() => ({}))) as Body;
     const fileId = (body.fileId || "").trim();
     if (!fileId) return NextResponse.json({ error: "fileId required" }, { status: 400 });
-    const collectionName = (body.collection ?? process.env.CHROMA_COLLECTION ?? "warburg-demo").toString();
+    const collectionName = (body.collection ?? process.env.CHROMA_COLLECTION ?? "all-docs").toString();
     const strategy = body.strategy ?? DEFAULTS.strategy;
     const chunkSize = Number.isFinite(body.chunkSize) ? Number(body.chunkSize) : DEFAULTS.chunkSize;
     const chunkOverlap = Number.isFinite(body.chunkOverlap) ? Number(body.chunkOverlap) : DEFAULTS.chunkOverlap;
